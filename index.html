@@ -91,18 +91,7 @@ button{
 button.secondary{background:transparent;border:1px solid var(--border);color:var(--text)}
 .status,.footer{text-align:center;font-size:13px;color:var(--muted);margin-top:10px}
 
-/* === SATU-SATUNYA TAMBAHAN UNTUK RAPIN CAPTCHA === */
-.captcha-wrap{
-    margin-top:16px;
-    display:flex;
-    justify-content:center;
-}
-
-@media(max-width:900px){
-    .editor{grid-template-columns:1fr}
-    .lines,.code{display:none!important}
-    textarea{padding:14px}
-}
+/
 </style>
 </head>
 
@@ -145,10 +134,6 @@ button.secondary{background:transparent;border:1px solid var(--border);color:var
     <label><input type="checkbox" id="watermark"> Hide Watermark</label>
 </div>
 
-<!-- CAPTCHA (RAPI & TENGAH) -->
-<div class="captcha-wrap">
-    <div class="g-recaptcha" data-sitekey="6LeSmD8sAAAAABYz8Uti7r3B_lEY_TC6JMZgPelU"></div>
-</div>
 
 <div class="actions">
     <button onclick="openFile()">Open File</button>
