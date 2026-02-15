@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Moonz Lua Obfuscator V3 — Luau Safe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+:root{
+--bg:#050509;--panel:#0e0e12;--border:#5a2aff;
+--glow:rgba(140,80,255,.55);--text:#f2f2f2;--muted:#888;
+--editor:#0c0c11;--editor-border:#3d2a75;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:Inter,system-ui,sans-serif}
+body{background:var(--bg);color:var(--text)}
+.app{max-width:1500px;margin:30px auto;padding:16px;display:flex;flex-direction:column;gap:18px}
+.header{text-align:center}
+.header h1{
+font-size:28px;font-weight:800;
+background:linear-gradient(135deg,#8232ff,#c67aff);
+-webkit-background-clip:text;-webkit-text-fill-color:transparent
+}
+.header p{font-size:13px;color:var(--muted)}
+.dashboard{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.panel{background:var(--panel);border:1px solid var(--border);
+box-shadow:0 0 12px var(--glow);padding:16px;border-radius:16px}
+.panel-title{font-size:15px;color:#c3a9ff;margin-bottom:8px}
+.editor-wrap{position:relative;height:360px;background:var(--editor);
+border:1px solid var(--editor-border);border-radius:12px}
+textarea{
+position:absolute;inset:0;padding:12px;
+background:transparent;border:none;resize:none;outline:none;
+font-family:Consolas,monospace;font-size:14px;color:#f0f0f0
+}
+.options,.actions{display:flex;justify-content:center;gap:14px;flex-wrap:wrap}
+.toggle{display:flex;align-items:center;gap:10px;cursor:pointer}
+.toggle input{display:none}
+.toggle span{
+width:44px;height:24px;background:#1a1a26;border-radius:20px;
+position:relative;border:1px solid var(--border)
+}
+.toggle span::before{
+content:"";width:18px;height:18px;background:#aaa;
+position:absolute;top:2px;left:3px;border-radius:50%;transition:.25s
+}
+.toggle input:checked+span{
+background:linear-gradient(135deg,#8232ff,#c67aff)
+}
+.toggle input:checked+span::before{left:22px;background:#fff}
+button{
+padding:11px 20px;border-radius:14px;
+background:linear-gradient(135deg,#8232ff,#c67aff);
+border:1px solid #aa7eff;color:#fff;font-weight:600;cursor:pointer
+}
+button.secondary{background:#0d0d14;border:1px solid var(--border)}
+button:disabled{opacity:.35;cursor:not-allowed}
+.status,.footer{text-align:center;font-size:13px;color:var(--muted)}
+.fab{
+position:fixed;right:18px;bottom:18px;width:62px;height:62px;
+border-radius:50%;background:linear-gradient(135deg,#8232ff,#c67aff);
+border:none;color:#fff;font-size:26px;font-weight:700
+}
+#spamModal{
+position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+background:rgba(5,5,15,.75);backdrop-filter:blur(10px);z-index:999999
+}
+#spamCard{
+background:#0e0e12;border:1px solid #5a2aff;
+box-shadow:0 0 30px rgba(140,80,255,.8);
+border-radius:20px;padding:28px 30px;text-align:center
+}
+#spamTimer{
+margin:12px 0;
+color:#caa8ff;
+font-weight:700
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+<div class="header">
+<h1>Moonz Lua Obfuscator</h1>
+<p>Version V1.4 • Lua / LuaU</p>
+</div>
+
+<div class="dashboard">
+<div class="panel">
+<div class="panel-title">input.lua</div>
+<div class="editor-wrap">
+<textarea id="input"></textarea>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-title">output.lua</div>
+<div class="editor-wrap">
+<textarea id="output" readonly></textarea>
+</div>
+</div>
+</div>
+
+<div class="options">
+<label class="toggle"><input type="checkbox" id="antiTamper" checked><span></span> Anti-Tamper</label>
+<label class="toggle"><input type="checkbox" id="strongObf" checked><span></span> Strong Obfuscator</label>
+</div>
+
+<div class="actions">
+<button onclick="openFile()">Open File</button>
+<button onclick="obfuscate()">Obfuscate</button>
+<button class="secondary" onclick="copyOutput()">Copy</button>
+<button class="secondary" onclick="download()">Download</button>
+<button class="secondary" onclick="clearAll()">Clear</button>
+</div>
+
+<div class="status" id="status">Status: Ready</div>
+<div class="footer">Moonz Obfuscator</div>
+</div>
+
+<button class="fab" onclick="obfuscate()">⚡</button>
+
+<div id="spamModal">
+<div id="spamCard">
+<h2 style="color:#caa8ff">⚠ Spam Detected</h2>
+<div id="spamTimer">Blocked</div>
+<button onclick="closeSpamModal()">OK</button>
+</div>
+</div>
+
+<script>
+/* ================= ELEMENT ================= */
+const input=document.getElementById("input");
+const output=document.getElementById("output");
+const statusEl=document.getElementById("status");
+const fileInput=document.createElement("input");
+fileInput.type="file";
+
+/* ================= AUTOSAVE ================= */
+input.value=localStorage.getItem("autosave_input")||"";
+output.value=localStorage.getItem("autosave_output")||"";
+input.oninput=()=>localStorage.setItem("autosave_input",input.value);
+
+/* ================= ANTI SPAM MODE D ================= */
+const SPAM_LIMIT=3;
+const SPAM_WINDOW=60000;
+const BASE_BLOCK=60000;
+const MAX_BLOCK=600000;
+
+function now(){return Date.now()}
+function getStore(k,d){return JSON.parse(localStorage.getItem(k)||JSON.stringify(d))}
+function setStore(k,v){localStorage.setItem(k,JSON.stringify(v))}
+
+function isBlocked(){
+const until=getStore("blocked_until",0);
+if(!until)return false;
+if(now()>until){
+setStore("blocked_until",0);
+setStore("click_log",[]);
+return false;
+}
+return true;
+}
+
+function registerClick(){
+let log=getStore("click_log",[]);
+log=log.filter(t=>now()-t<SPAM_WINDOW);
+log.push(now());
+setStore("click_log",log);
+
+if(log.length>SPAM_LIMIT){
+let strikes=getStore("spam_strikes",0)+1;
+setStore("spam_strikes",strikes);
+let block=Math.min(BASE_BLOCK*strikes,MAX_BLOCK);
+setStore("blocked_until",now()+block);
+return false;
+}
+return true;
+}
+
+function updateButtons(){
+const b=isBlocked();
+document.querySelectorAll("button").forEach(x=>x.disabled=b);
+const fab=document.querySelector(".fab");
+if(fab)fab.disabled=b;
+}
+setInterval(updateButtons,300);
+
+function updateSpamTimer(){
+const until=getStore("blocked_until",0);
+if(!until)return;
+const left=Math.max(0,until-now());
+const s=Math.floor(left/1000);
+const m=Math.floor(s/60);
+const r=s%60;
+document.getElementById("spamTimer").textContent=
+"Blocked: "+String(m).padStart(2,"0")+":"+String(r).padStart(2,"0");
+if(left>0)requestAnimationFrame(updateSpamTimer);
+}
+
+/* ================= RANDOM ================= */
+function r(a,b){return Math.floor(Math.random()*(b-a))+a}
+function rv(){return "_"+Math.random().toString(36).slice(2,10)}
+
+/* ================= OBFUSCATE V3 ================= */
+function obfuscate(){
+if(isBlocked()||!registerClick()){
+document.getElementById("spamModal").style.display="flex";
+updateSpamTimer();
+return;
+}
+
+const src=input.value;
+if(!src.trim())return;
+statusEl.textContent="Status: Obfuscating...";
+
+const k1=r(30,200),k2=r(50,240);
+const vD=rv(),vK1=rv(),vK2=rv();
+let enc=[];
+
+for(let i=0;i<src.length;i++){
+let c=src.charCodeAt(i);
+enc.push(((c+k1+i)%256)^k2);
+}
+
+const checksum=enc.reduce((a,b)=>a+b,0)%997;
+
+let lua=`-- [[          Moonz Obfuscator V1.4  
+          ]] --
+local ${vD}={${enc.join(",")}}
+local ${vK1}=${k1}
+local ${vK2}=${k2}
+local CHECK=${checksum}
+
+local bxor=bit32.bxor
+local buf=table.create(#${vD})
+
+local state=1
+while true do
+if state==1 then
+for i=1,#${vD} do
+local v=bxor(${vD}[i],${vK2})-${vK1}-(i-1)
+v=(v%256+256)%256
+buf[i]=string.char(v)
+end
+state=2
+elseif state==2 then
+if (#buf*3)%3~=0 then return end
+state=3
+elseif state==3 then
+local s,h=0,0
+for i=1,#${vD} do
+local v=${vD}[i]
+s+=v
+h=bxor(h,(v*i)%255)
+end
+if s%997~=CHECK then return end
+break
+end
+end
+
+for i=1,#buf do
+buf[i]=string.char((string.byte(buf[i])+i*7)%256)
+end
+for i=1,#buf do
+buf[i]=string.char((string.byte(buf[i])-i*7)%256)
+end
+
+local f=loadstring(table.concat(buf))
+if f then f() end
+`;
+
+output.value=lua;
+localStorage.setItem("autosave_output",lua);
+statusEl.textContent="Status: Done";
+}
+
+/* ================= UTIL ================= */
+function openFile(){fileInput.click()}
+fileInput.onchange=e=>{
+const r=new FileReader();
+r.onload=()=>{input.value=r.result};
+r.readAsText(e.target.files[0]);
+}
+function download(){
+const a=document.createElement("a");
+a.href=URL.createObjectURL(new Blob([output.value]));
+a.download="Moonz-obfuscated.lua";
+a.click();
+}
+function copyOutput(){navigator.clipboard.writeText(output.value)}
+function clearAll(){
+input.value="";output.value="";
+localStorage.clear();
+statusEl.textContent="Status: Cleared";
+}
+function closeSpamModal(){
+document.getElementById("spamModal").style.display="none";
+}
+</script>
+</body>
+    </html>
